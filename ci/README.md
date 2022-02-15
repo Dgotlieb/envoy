@@ -201,3 +201,42 @@ To build and submit for analysis:
 ```bash
 COVERITY_TOKEN={generated Coverity project token} ./ci/do_coverity_local.sh
 ```
+
+# ARM 
+## Introduction
+- As described [here](https://github.com/google/tcmalloc/issues/33) and [here](https://github.com/envoyproxy/envoy/issues/15235), 
+  since version 1.16.0, Envoy uses the new [tcmalloc library](https://github.com/google/tcmalloc) rather than the old `gperftools` - [more details can be found here](https://google.github.io/tcmalloc/gperftools.html)
+- The issue is that the new `tcmalloc` assumes virtual addresses are 48-bits for aarch64 (the same size as in x86-64) and calculates hints for mmap() accordingly which causes mmap() to fail. 
+- This issue is happening on Jetson but not on other aarch64 machines (tested on Rpi and AWS graviton).
+- As discussed at [here](https://github.com/envoyproxy/envoy/issues/15235#issuecomment-903511185) and [here](https://github.com/envoyproxy/envoy/issues/17854) the envoy project does not have the resources at the moment to create both amd64 and aarch64 images.
+
+## Build process
+* Create an **ARM** machine (I used AWS EC2 graviton) with the recommended specifications of:
+  - CPU: 48
+  - RAM: 96
+  - Storage: 100 GB 
+  - OS: Ubuntu
+  
+* [Install Docker](https://docs.docker.com/engine/install/ubuntu/) 
+* Clone this repository and checkout the desired version:  
+$ `git clone https://github.com/Dgotlieb/envoy.git`  
+$ git checkout \<desired version\> e.g: $ `git checkout release/v1.20`  
+$ `cd envoy`  
+* Build the envoy binaries (envoy, su-exec) using Docker (based on the machine specified above, it should take about 10 minutes)  
+$ `sudo ./ci/run_envoy_docker.sh ./ci/do_ci.sh bazel.release.server_only`
+* Build the docker image:  
+$ `sudo docker build --build-arg TARGETPLATFORM=linux/arm64 -t envoy:v1.20.0-jetson -f ci/Dockerfile-envoy .`
+* Tag and push to DockerHub:  
+$ `docker tag envoy:v1.20.0-jetson trigoorg/envoy:v1.20.0-jetson`  
+$ `docker push trigoorg/envoy:v1.20.0-jetson`
+
+* In case you prefer not using your Docker hub creds, you can save the image and SCP it using:  
+$ `docker save -o <path for generated tar file> <image name>`  
+$ `scp -i secret.pem ubuntu@<public_ip>:/home/ubuntu/envoy/ <remote path for generated tar file> <local path of tar file>`  
+$ `docker load -i <local path of tar file>`
+
+
+## Caveats
+This image is built upon a full Ubuntu image, a stripped version should be considered.
+
+
